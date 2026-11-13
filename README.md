@@ -28,7 +28,8 @@ First install the .NET SDK: see [install.md](install.md).
 
 ```
 build.bat   (builds the solution)
-run.bat     (builds and starts the app)
+run.bat     (builds and starts DesktopSqlStudio.exe)
+run-dll.bat (builds and starts via `dotnet DesktopSqlStudio.dll`; use this if Windows blocks the unsigned exe)
 dotnet test (runs the unit tests)
 ```
 
