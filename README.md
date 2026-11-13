@@ -24,8 +24,9 @@ Defaults to `Documents\DesktopSqlStudio\Queries`; change `AutosaveFolder` in the
 ## Build
 
 ```
-dotnet build DesktopSqlStudio.sln
-dotnet test
+build.bat   (builds the solution)
+run.bat     (builds and starts the app)
+dotnet test (runs the unit tests)
 ```
 
 The tests cover batch splitting, autosave and config only. They never connect to a database.
