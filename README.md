@@ -1,1 +1,31 @@
 # Desktop-SQL-Studio
+
+A lightweight SSMS-style SQL Server client for Windows (C# WPF, .NET 8).
+
+## Features (first scaffold)
+
+- T-SQL editor with syntax highlighting (AvalonEdit)
+- Multiple query windows (tabs)
+- **Never lose a query:** every window is autosaved 500 ms after you stop typing, and again on exit or crash. Closing a window moves its file to `Closed/` instead of deleting it.
+- Execute selected text or the whole script (F5 / Ctrl+E); `GO` batch separators supported; cancel a running query
+- Multiple result sets shown in grids, plus a Messages tab
+- Local JSON config with SQL logins, the current Windows user, or a different Windows user
+
+## Configuration
+
+On first start the app creates `%APPDATA%\DesktopSqlStudio\config.json`. See `src/DesktopSqlStudio/config.example.json` for all options. Use **File > Edit Config** then **File > Reload Config**.
+
+Passwords are stored in plain text for now (encryption is planned). `config.json` is git-ignored; never commit it.
+
+## Autosave folder
+
+Defaults to `Documents\DesktopSqlStudio\Queries`; change `AutosaveFolder` in the config. Make it its own git repo (separate from this one) to keep history. Each window is one `.sql` file plus a `session.json` listing open windows.
+
+## Build
+
+```
+dotnet build DesktopSqlStudio.sln
+dotnet test
+```
+
+The tests cover batch splitting, autosave and config only. They never connect to a database.

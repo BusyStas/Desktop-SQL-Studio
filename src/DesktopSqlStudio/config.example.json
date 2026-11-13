@@ -1,0 +1,30 @@
+{
+  "AutosaveFolder": "C:\\Users\\you\\Documents\\DesktopSqlStudio\\Queries",
+  "Connections": [
+    {
+      "Name": "Dev - SQL login",
+      "Server": "myserver.database.windows.net",
+      "Database": "MyDatabase",
+      "Auth": "Sql",
+      "UserName": "sqluser",
+      "Password": "example-password",
+      "CommandTimeoutSeconds": 120
+    },
+    {
+      "Name": "Local - my Windows account",
+      "Server": "localhost",
+      "Database": "master",
+      "Auth": "Windows",
+      "TrustServerCertificate": true
+    },
+    {
+      "Name": "Prod - other Windows user",
+      "Server": "prod-sql01",
+      "Database": "MyDatabase",
+      "Auth": "WindowsAs",
+      "WindowsDomain": "CORP",
+      "WindowsUser": "svc-reports",
+      "WindowsPassword": "example-password"
+    }
+  ]
+}

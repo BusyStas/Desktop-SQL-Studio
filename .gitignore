@@ -218,3 +218,12 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Desktop-SQL-Studio ---
+# Local config holds SQL / Windows passwords: never commit
+config.json
+**/config.json
+!**/config.example.json
+.vs/
+bin/
+obj/
