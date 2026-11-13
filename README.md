@@ -24,6 +24,8 @@ Defaults to `Documents\DesktopSqlStudio\Queries`; change `AutosaveFolder` in the
 
 ## Build
 
+First install the .NET SDK: see [install.md](install.md).
+
 ```
 build.bat   (builds the solution)
 run.bat     (builds and starts the app)
