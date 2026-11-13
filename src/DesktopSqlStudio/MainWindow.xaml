@@ -22,9 +22,10 @@
         </Menu>
 
         <ToolBar DockPanel.Dock="Top">
-            <TextBlock Text="Connection:" VerticalAlignment="Center" Margin="4,0" />
-            <ComboBox x:Name="ConnectionCombo" Width="240" DisplayMemberPath="Name"
-                      SelectionChanged="ConnectionCombo_SelectionChanged" />
+            <TextBlock Text="Server:" VerticalAlignment="Center" Margin="4,0" />
+            <TextBlock x:Name="ServerLabel" FontWeight="Bold" VerticalAlignment="Center" MinWidth="120" Text="(none)" />
+            <TextBlock Text="Database:" VerticalAlignment="Center" Margin="12,0,4,0" />
+            <ComboBox x:Name="DatabaseCombo" Width="200" SelectionChanged="DatabaseCombo_SelectionChanged" />
             <Separator />
             <Button x:Name="ExecuteButton" Content="▶ Execute (F5)" Click="Execute_Click" />
             <Button x:Name="CancelButton" Content="■ Cancel" Click="Cancel_Click" IsEnabled="False" />
@@ -34,6 +35,15 @@
             <TextBlock x:Name="StatusText" />
         </StatusBar>
 
-        <TabControl x:Name="Tabs" SelectionChanged="Tabs_SelectionChanged" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="230" MinWidth="120" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TreeView x:Name="ServerTree" Grid.Column="0" SelectedItemChanged="ServerTree_SelectedItemChanged" />
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" />
+            <TabControl x:Name="Tabs" Grid.Column="2" SelectionChanged="Tabs_SelectionChanged" />
+        </Grid>
     </DockPanel>
 </Window>

@@ -6,7 +6,8 @@ public sealed class SavedQuery
 {
     public string Id { get; set; } = "";
     public string Title { get; set; } = "";
-    public string? Connection { get; set; }
+    public string? Server { get; set; }
+    public string? Database { get; set; }
     public string Text { get; set; } = "";
 }
 
@@ -39,7 +40,7 @@ public sealed class QueryStore
 
     public void SaveSession(IEnumerable<SavedQuery> openQueries)
     {
-        var entries = openQueries.Select(q => new SessionEntry { Id = q.Id, Title = q.Title, Connection = q.Connection }).ToList();
+        var entries = openQueries.Select(q => new SessionEntry { Id = q.Id, Title = q.Title, Server = q.Server, Database = q.Database }).ToList();
         AtomicFile.WriteAllText(Path.Combine(Folder, SessionFileName), JsonSerializer.Serialize(entries, JsonOptions));
     }
 
@@ -58,7 +59,7 @@ public sealed class QueryStore
                 foreach (var e in entries)
                 {
                     if (string.IsNullOrEmpty(e.Id) || !File.Exists(QueryPath(e.Id)) || !seen.Add(e.Id)) continue;
-                    result.Add(new SavedQuery { Id = e.Id, Title = e.Title, Connection = e.Connection, Text = File.ReadAllText(QueryPath(e.Id)) });
+                    result.Add(new SavedQuery { Id = e.Id, Title = e.Title, Server = e.Server, Database = e.Database, Text = File.ReadAllText(QueryPath(e.Id)) });
                 }
             }
             catch (JsonException) { /* damaged session file: fall through to loose files */ }
@@ -88,6 +89,7 @@ public sealed class QueryStore
     {
         public string Id { get; set; } = "";
         public string Title { get; set; } = "";
-        public string? Connection { get; set; }
+        public string? Server { get; set; }
+        public string? Database { get; set; }
     }
 }

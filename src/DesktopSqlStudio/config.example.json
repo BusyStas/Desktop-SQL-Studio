@@ -1,30 +1,43 @@
 {
   "AutosaveFolder": "C:\\Users\\you\\Documents\\DesktopSqlStudio\\Queries",
-  "Connections": [
+  "Credentials": [
+    { "Name": "Azure dev login", "Auth": "Sql", "UserName": "sqluser", "Password": "example-password" },
+    { "Name": "My Windows account", "Auth": "Windows" },
+    { "Name": "Reports service account", "Auth": "WindowsAs", "WindowsDomain": "CORP", "WindowsUser": "svc-reports", "WindowsPassword": "example-password" }
+  ],
+  "ServerGroups": [
     {
-      "Name": "Dev - SQL login",
-      "Server": "myserver.database.windows.net",
-      "Database": "MyDatabase",
-      "Auth": "Sql",
-      "UserName": "sqluser",
-      "Password": "example-password",
-      "CommandTimeoutSeconds": 120
+      "Name": "Azure",
+      "Servers": [
+        {
+          "Name": "azure-dev",
+          "Address": "myserver.database.windows.net",
+          "Credential": "Azure dev login",
+          "DefaultDatabase": "AppDb",
+          "Databases": [ "AppDb", "Reporting" ],
+          "CommandTimeoutSeconds": 120
+        }
+      ]
     },
     {
-      "Name": "Local - my Windows account",
-      "Server": "localhost",
-      "Database": "master",
-      "Auth": "Windows",
-      "TrustServerCertificate": true
-    },
-    {
-      "Name": "Prod - other Windows user",
-      "Server": "prod-sql01",
-      "Database": "MyDatabase",
-      "Auth": "WindowsAs",
-      "WindowsDomain": "CORP",
-      "WindowsUser": "svc-reports",
-      "WindowsPassword": "example-password"
+      "Name": "On-prem",
+      "Servers": [
+        {
+          "Name": "local",
+          "Address": "localhost",
+          "Credential": "My Windows account",
+          "DefaultDatabase": "master",
+          "Databases": [ "master", "tempdb" ],
+          "TrustServerCertificate": true
+        },
+        {
+          "Name": "prod-sql01",
+          "Address": "prod-sql01",
+          "Credential": "Reports service account",
+          "DefaultDatabase": "Sales",
+          "Databases": [ "Sales", "Inventory" ]
+        }
+      ]
     }
   ]
 }

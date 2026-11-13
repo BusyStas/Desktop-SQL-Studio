@@ -16,7 +16,8 @@ public sealed partial class QueryView : UserControl
 
     public string Id { get; }
     public string Title { get; set; }
-    public string? ConnectionName { get; set; }
+    public string? ServerName { get; set; }
+    public string? Database { get; set; }
     public bool IsRunning { get; private set; }
     public string Text => Editor.Text;
 
@@ -29,7 +30,8 @@ public sealed partial class QueryView : UserControl
         InitializeComponent();
         Id = saved.Id;
         Title = saved.Title;
-        ConnectionName = saved.Connection;
+        ServerName = saved.Server;
+        Database = saved.Database;
 
         Editor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinitionByExtension(".sql");
         Editor.Text = saved.Text;

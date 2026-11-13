@@ -13,7 +13,8 @@ public partial class MainWindow : Window
     private AppConfig _config;
     private readonly string _configPath;
     private readonly QueryStore _store;
-    private bool _syncingCombo;
+    private bool _syncing;
+    private readonly Dictionary<string, TreeViewItem> _serverItems = new(StringComparer.OrdinalIgnoreCase);
 
     public MainWindow(AppConfig config, string configPath, QueryStore store)
     {
@@ -22,16 +23,16 @@ public partial class MainWindow : Window
         _configPath = configPath;
         _store = store;
 
-        ConnectionCombo.ItemsSource = _config.Connections;
+        BuildTree();
 
         var restored = _store.LoadOpen();
         foreach (var q in restored) AddTab(q);
         if (Tabs.Items.Count == 0) NewQuery();
         Tabs.SelectedIndex = 0;
 
-        StatusText.Text = restored.Count > 0
+        StatusText.Text = ConfigWarnings() ?? (restored.Count > 0
             ? $"Restored {restored.Count} query window(s) from {_store.Folder}"
-            : $"Autosaving to {_store.Folder}";
+            : $"Autosaving to {_store.Folder}");
     }
 
     private QueryView? Current => (Tabs.SelectedItem as TabItem)?.Content as QueryView;
@@ -51,7 +52,8 @@ public partial class MainWindow : Window
         {
             Id = QueryStore.NewId(),
             Title = $"Query {number}",
-            Connection = (ConnectionCombo.SelectedItem as ConnectionProfile)?.Name
+            Server = Current?.ServerName,
+            Database = Current?.Database
         };
         var view = AddTab(saved);
         SafeSave(() => _store.SaveText(view.Id, view.Text)); // the file exists from the first moment
@@ -94,7 +96,7 @@ public partial class MainWindow : Window
 
     private IEnumerable<SavedQuery> OpenQueries() =>
         Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<QueryView>()
-            .Select(v => new SavedQuery { Id = v.Id, Title = v.Title, Connection = v.ConnectionName, Text = v.Text });
+            .Select(v => new SavedQuery { Id = v.Id, Title = v.Title, Server = v.ServerName, Database = v.Database, Text = v.Text });
 
     /// <summary>Writes every open query and the session list to disk right now.</summary>
     public void FlushAll()
@@ -112,22 +114,74 @@ public partial class MainWindow : Window
         }
     }
 
-    // ---------- connections ----------
+    // ---------- servers and databases ----------
+
+    private string? ConfigWarnings()
+    {
+        var problems = _config.Validate();
+        return problems.Count == 0 ? null : "Config: " + string.Join(" ", problems);
+    }
+
+    private void BuildTree()
+    {
+        _syncing = true;
+        ServerTree.Items.Clear();
+        _serverItems.Clear();
+        foreach (var group in _config.ServerGroups)
+        {
+            var groupItem = new TreeViewItem { Header = group.Name, IsExpanded = true, FontWeight = FontWeights.SemiBold };
+            foreach (var server in group.Servers)
+            {
+                var item = new TreeViewItem { Header = server.Name, Tag = server, FontWeight = FontWeights.Normal };
+                groupItem.Items.Add(item);
+                _serverItems.TryAdd(server.Name, item);
+            }
+            ServerTree.Items.Add(groupItem);
+        }
+        _syncing = false;
+        SyncPickers();
+    }
+
+    /// <summary>Makes the tree selection, server label and database dropdown match the current query window.</summary>
+    private void SyncPickers()
+    {
+        _syncing = true;
+        var view = Current;
+        var server = _config.FindServer(view?.ServerName);
+
+        if (ServerTree.SelectedItem is TreeViewItem selected) selected.IsSelected = false;
+        if (server is not null && _serverItems.TryGetValue(server.Name, out var item)) item.IsSelected = true;
+
+        ServerLabel.Text = server?.Name ?? "(none)";
+        DatabaseCombo.ItemsSource = server?.Databases;
+        DatabaseCombo.SelectedItem = server?.Databases.FirstOrDefault(d => d.Equals(view?.Database, StringComparison.OrdinalIgnoreCase));
+        _syncing = false;
+        UpdateButtons();
+    }
 
     private void Tabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, Tabs)) return;
-        _syncingCombo = true;
-        ConnectionCombo.SelectedItem = _config.Connections.FirstOrDefault(c => c.Name == Current?.ConnectionName);
-        _syncingCombo = false;
-        UpdateButtons();
+        SyncPickers();
         Current?.FocusEditor();
     }
 
-    private void ConnectionCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void ServerTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (_syncingCombo || Current is null) return;
-        Current.ConnectionName = (ConnectionCombo.SelectedItem as ConnectionProfile)?.Name;
+        if (_syncing || Current is null) return;
+        if (e.NewValue is not TreeViewItem { Tag: ServerEntry server }) return; // a group row: ignore
+
+        Current.ServerName = server.Name;
+        if (!server.Databases.Contains(Current.Database ?? "", StringComparer.OrdinalIgnoreCase))
+            Current.Database = server.DefaultDatabase;
+        SyncPickers();
+        SaveSession();
+    }
+
+    private void DatabaseCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncing || Current is null || DatabaseCombo.SelectedItem is not string database) return;
+        Current.Database = database;
         SaveSession();
     }
 
@@ -147,19 +201,19 @@ public partial class MainWindow : Window
         var view = Current;
         if (view is null || view.IsRunning) return;
 
-        if (ConnectionCombo.SelectedItem is not ConnectionProfile profile)
+        if (!_config.TryResolve(view.ServerName, view.Database, out var profile, out var error))
         {
-            StatusText.Text = _config.Connections.Count == 0
-                ? "No connections yet: File > Edit Config, add one, then File > Reload Config."
-                : "Pick a connection first.";
+            StatusText.Text = _config.ServerGroups.Count == 0
+                ? "No servers yet: File > Edit Config, add a credential and a server group, then File > Reload Config."
+                : error;
             return;
         }
 
         // Make sure what we are about to run is already safely on disk.
         SafeSave(() => _store.SaveText(view.Id, view.Text));
-        StatusText.Text = $"Running on {profile.Name}...";
+        StatusText.Text = $"Running on {profile.Name} / {profile.Database}...";
         await view.RunAsync(profile);
-        StatusText.Text = $"Finished on {profile.Name}";
+        StatusText.Text = $"Finished on {profile.Name} / {profile.Database}";
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => Current?.Cancel();
@@ -178,11 +232,9 @@ public partial class MainWindow : Window
         try
         {
             _config = AppConfig.Load(_configPath);
-            _syncingCombo = true;
-            ConnectionCombo.ItemsSource = _config.Connections;
-            ConnectionCombo.SelectedItem = _config.Connections.FirstOrDefault(c => c.Name == Current?.ConnectionName);
-            _syncingCombo = false;
-            StatusText.Text = $"Config reloaded: {_config.Connections.Count} connection(s). Autosave folder changes need a restart.";
+            BuildTree();
+            StatusText.Text = ConfigWarnings() ??
+                $"Config reloaded: {_config.AllServers().Count()} server(s) in {_config.ServerGroups.Count} group(s). Autosave folder changes need a restart.";
         }
         catch (Exception ex)
         {

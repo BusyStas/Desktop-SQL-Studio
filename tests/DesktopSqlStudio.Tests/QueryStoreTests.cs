@@ -20,7 +20,7 @@ public class QueryStoreTests : IDisposable
         store.SaveText("a", "SELECT 1");
         store.SaveSession(new[]
         {
-            new SavedQuery { Id = "b", Title = "Second", Connection = "Dev" },
+            new SavedQuery { Id = "b", Title = "Second", Server = "Dev", Database = "Sales" },
             new SavedQuery { Id = "a", Title = "First" }
         });
 
@@ -28,7 +28,8 @@ public class QueryStoreTests : IDisposable
 
         Assert.Equal(new[] { "b", "a" }, loaded.Select(q => q.Id));
         Assert.Equal("SELECT 2", loaded[0].Text);
-        Assert.Equal("Dev", loaded[0].Connection);
+        Assert.Equal("Dev", loaded[0].Server);
+        Assert.Equal("Sales", loaded[0].Database);
     }
 
     [Fact]
@@ -71,12 +72,12 @@ public class QueryStoreTests : IDisposable
         var path = Path.Combine(_folder, "config.json");
         Directory.CreateDirectory(_folder);
         var config = new AppConfig();
-        config.Connections.Add(new ConnectionProfile { Name = "Dev", Server = "srv", Auth = AuthType.WindowsAs, WindowsUser = "bob", WindowsPassword = "pw" });
+        config.Credentials.Add(new CredentialEntry { Name = "Bob", Auth = AuthType.WindowsAs, WindowsUser = "bob", WindowsPassword = "pw" });
         config.Save(path);
 
         var loaded = AppConfig.Load(path);
 
-        Assert.Equal(AuthType.WindowsAs, loaded.Connections[0].Auth);
-        Assert.Equal("pw", loaded.Connections[0].WindowsPassword);
+        Assert.Equal(AuthType.WindowsAs, loaded.Credentials[0].Auth);
+        Assert.Equal("pw", loaded.Credentials[0].WindowsPassword);
     }
 }
