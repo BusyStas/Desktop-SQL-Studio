@@ -1,6 +1,6 @@
 # Desktop-SQL-Studio
 
-A lightweight SSMS-style SQL Server client for Windows (C# WPF, .NET 8).
+A lightweight SSMS-style SQL Server client for Windows (C# WPF, .NET 10).
 
 ## Features (first scaffold)
 

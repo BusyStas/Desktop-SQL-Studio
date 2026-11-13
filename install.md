@@ -25,13 +25,9 @@ Check the install:
 dotnet --version
 ```
 
-## Note on the target version
+## Target version
 
-The projects currently target `net8.0` / `net8.0-windows`. The .NET 10 SDK can build them, but running the app and the tests needs the .NET 8 runtime too:
-
-https://dotnet.microsoft.com/en-us/download/dotnet/8.0
-
-(Choose ".NET Desktop Runtime 8" for the app and ".NET Runtime 8" for the tests, or install the .NET 8 SDK, which includes both.)
+All projects target .NET 10 (`net10.0` / `net10.0-windows`), so the .NET 10 SDK is the only thing you need.
 
 ## Build and run
 
