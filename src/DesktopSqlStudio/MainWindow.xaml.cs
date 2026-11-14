@@ -120,7 +120,7 @@ public partial class MainWindow : Window
     private string? ConfigWarnings()
     {
         var problems = _config.Validate();
-        return problems.Count == 0 ? null : "Config: " + string.Join(" ", problems);
+        return problems.Count == 0 ? null : $"Config ({_configPath}): " + string.Join(" ", problems);
     }
 
     private void BuildTree()
@@ -139,6 +139,8 @@ public partial class MainWindow : Window
             }
             ServerTree.Items.Add(groupItem);
         }
+        if (ServerTree.Items.Count == 0)
+            ServerTree.Items.Add(new TreeViewItem { Header = "No servers: File > Edit Config", IsEnabled = false });
         _syncing = false;
         SyncPickers();
     }
