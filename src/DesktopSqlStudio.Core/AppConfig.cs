@@ -74,6 +74,10 @@ public sealed class AppConfig
     /// <summary>Folder where every query window is autosaved. Meant to be its own git repo.</summary>
     public string AutosaveFolder { get; set; } = DefaultAutosaveFolder();
 
+    /// <summary>True when the file still uses the old "Connections" list, which is no longer read.</summary>
+    [JsonIgnore]
+    public bool HasLegacyConnections { get; private set; }
+
     public List<CredentialEntry> Credentials { get; set; } = new();
     public List<ServerGroup> ServerGroups { get; set; } = new();
 
@@ -100,9 +104,18 @@ public sealed class AppConfig
             fresh.Save(path);
             return fresh;
         }
-        var config = JsonSerializer.Deserialize<AppConfig>(File.ReadAllText(path), Options) ?? new AppConfig();
+        var json = File.ReadAllText(path);
+        var config = JsonSerializer.Deserialize<AppConfig>(json, Options) ?? new AppConfig();
+        config.HasLegacyConnections = HasProperty(json, "Connections");
         config.Normalize();
         return config;
+    }
+
+    private static bool HasProperty(string json, string name)
+    {
+        using var doc = JsonDocument.Parse(json, new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+        return doc.RootElement.ValueKind == JsonValueKind.Object &&
+               doc.RootElement.EnumerateObject().Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
     }
 
     public void Save(string path)
@@ -132,6 +145,10 @@ public sealed class AppConfig
     public List<string> Validate()
     {
         var problems = new List<string>();
+        if (HasLegacyConnections)
+            problems.Add("config.json uses the old \"Connections\" format, which is ignored. Use \"Credentials\" and \"ServerGroups\" (see config.example.json).");
+        if (ServerGroups.Count == 0 || !AllServers().Any())
+            problems.Add("No servers defined in config.json.");
         foreach (var dup in AllServers().GroupBy(s => s.Name, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
             problems.Add($"Server name '{dup.Key}' is used more than once.");
         foreach (var dup in Credentials.GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
