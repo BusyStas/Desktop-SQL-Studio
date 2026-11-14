@@ -6,7 +6,9 @@ A lightweight SSMS-style SQL Server client for Windows (C# WPF, .NET 10).
 
 - T-SQL editor with syntax highlighting (AvalonEdit)
 - Multiple query windows (tabs)
-- **Never lose a query:** every window is autosaved 500 ms after you stop typing, and again on exit or crash. Closing a window moves its file to `Closed/` instead of deleting it.
+- **Never lose a query:** every window is autosaved 500 ms after you stop typing, and again on exit or crash. Closing a window keeps its file (only empty scripts are removed).
+- Scripts live in `root\<server>\<database>\<type>\<name>.sql`. Every script always has a type; type buttons on the toolbar change it, and changing the type, database or server moves the file.
+- The left tree shows server > database > type > scripts; click a script to open it.
 - Execute selected text or the whole script (F5 / Ctrl+E); `GO` batch separators supported; cancel a running query
 - Multiple result sets shown in grids, plus a Messages tab
 - Server groups (Group > Server tree on the left); each server has a default database and its own list of databases, chosen from a dropdown per query window
@@ -27,9 +29,32 @@ On first start the app creates `%APPDATA%\DesktopSqlStudio\config.json`. See `sr
 
 Passwords are stored in plain text for now (encryption is planned). `config.json` is git-ignored; never commit it.
 
-## Autosave folder
+## Autosave folder and script layout
 
-Defaults to `Documents\DesktopSqlStudio\Queries`; change `AutosaveFolder` in the config. Make it its own git repo (separate from this one) to keep history. Each window is one `.sql` file plus a `session.json` listing open windows.
+Defaults to `Documents\DesktopSqlStudio\Queries`; change `AutosaveFolder` in the config. Make it its own git repo (separate from this one) to keep history.
+
+```
+<AutosaveFolder>\<server>\<database>\<type>\<name>.sql
+<AutosaveFolder>\_unassigned\<type>\<name>.sql   (scripts with no server yet)
+<AutosaveFolder>\session.json                      (which scripts are open)
+```
+
+Script files from the first version (loose `.sql` files in the root) are moved into `_unassigned\<default type>` on start.
+
+## Script types
+
+Types come from `%APPDATA%\DesktopSqlStudio\script-types.yaml`, created on first start (File > Edit Script Types, then File > Reload Config):
+
+```yaml
+default: scripts
+types:
+  - scripts
+  - troubleshooting
+  - cleanup
+  - analytics
+```
+
+The default type is added to the list if missing. A broken file falls back to the built-in list with a warning.
 
 ## Build
 
@@ -43,4 +68,4 @@ run-dll.bat (builds and starts via `dotnet DesktopSqlStudio.dll`; use this if Wi
 dotnet test (runs the unit tests)
 ```
 
-The tests cover batch splitting, autosave and config only. They never connect to a database.
+The tests cover batch splitting, script storage, types, workspace logic and config only. They never connect to a database.

@@ -15,7 +15,8 @@ internal static class Program
         try
         {
             var config = AppConfig.Load(configPath);
-            workspace = new QueryWorkspace(config, configPath, new QueryStore(config.AutosaveFolder));
+            var typesPath = ScriptTypes.DefaultPath();
+            workspace = new QueryWorkspace(config, configPath, new QueryStore(config.AutosaveFolder), ScriptTypes.Load(typesPath), typesPath);
         }
         catch (Exception ex)
         {

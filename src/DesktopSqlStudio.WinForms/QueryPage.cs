@@ -60,6 +60,9 @@ public sealed class QueryPage : TabPage
     /// <summary>Copies the editor text into the document so the workspace can save it.</summary>
     public void SyncText() => Document.Text = _editor.Text;
 
+    /// <summary>Shows the document's current file name on the tab.</summary>
+    public void RefreshTitle() => Text = Document.Title;
+
     public void FocusEditor() => _editor.Focus();
 
     public void Cancel() => _cts?.Cancel();

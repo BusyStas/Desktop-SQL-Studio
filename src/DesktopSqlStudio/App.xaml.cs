@@ -30,7 +30,8 @@ public partial class App : Application
         DispatcherUnhandledException += (_, _) => SafeFlush();
         AppDomain.CurrentDomain.UnhandledException += (_, _) => SafeFlush();
 
-        _main = new MainWindow(new QueryWorkspace(config, configPath, store));
+        var typesPath = ScriptTypes.DefaultPath();
+        _main = new MainWindow(new QueryWorkspace(config, configPath, store, ScriptTypes.Load(typesPath), typesPath));
         _main.Show();
     }
 

@@ -6,6 +6,7 @@ namespace DesktopSqlStudio.Tests;
 public class QueryWorkspaceTests : IDisposable
 {
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "dss-ws-" + Guid.NewGuid().ToString("N"));
+    private string Root => Path.Combine(_folder, "root");
 
     public void Dispose()
     {
@@ -26,67 +27,163 @@ public class QueryWorkspaceTests : IDisposable
             }
         });
         config.Normalize();
-        return new QueryWorkspace(config, Path.Combine(_folder, "config.json"), new QueryStore(_folder));
+        var typesPath = Path.Combine(_folder, "script-types.yaml");
+        return new QueryWorkspace(config, Path.Combine(_folder, "config.json"), new QueryStore(Root), ScriptTypes.Load(typesPath), typesPath);
     }
 
     [Fact]
-    public void NewDocumentsAreNumberedAndInheritServerAndDatabase()
+    public void NewDocumentsAreNumberedAndInheritServerDatabaseAndType()
     {
         var ws = Create();
         var first = ws.NewDocument(null);
         first.Server = "s1";
         first.Database = "Sales";
+        first.Type = "cleanup";
 
         var second = ws.NewDocument(first);
 
         Assert.Equal("Query 1", first.Title);
         Assert.Equal("Query 2", second.Title);
-        Assert.Equal("s1", second.Server);
-        Assert.Equal("Sales", second.Database);
+        Assert.Equal(("s1", "Sales", "cleanup"), (second.Server, second.Database, second.Type));
     }
 
     [Fact]
-    public void SelectServerKeepsDatabaseOnlyWhenTheServerHasIt()
+    public void NewDocumentWithoutAnythingSelectedHasTheDefaultType()
+    {
+        Assert.Equal("scripts", Create().NewDocument(null).Type);
+    }
+
+    [Fact]
+    public void NewDocumentUsesTheSelectedTreeNode()
     {
         var ws = Create();
-        var doc = ws.NewDocument(null);
-        doc.Database = "Sales";
+        var server = ws.Config.FindServer("s2")!;
 
-        ws.SelectServer(doc, ws.Config.FindServer("s1")!);
-        Assert.Equal("Sales", doc.Database);
+        var doc = ws.NewDocument(null, new CatalogTag(server, null, null, null));
+
+        Assert.Equal(("s2", "Other", "scripts"), (doc.Server, doc.Database, doc.Type));
+        Assert.Equal(Path.Combine(Root, "s2", "Other", "scripts", "Query 1.sql"), doc.FilePath);
+    }
+
+    [Fact]
+    public void NewDocumentSkipsNamesThatAlreadyExistOnDisk()
+    {
+        var ws = Create();
+        var server = ws.Config.FindServer("s1")!;
+        var dir = Path.Combine(Root, "s1", "Main", "scripts");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "Query 1.sql"), "old");
+
+        var doc = ws.NewDocument(null, new CatalogTag(server, "Main", "scripts", null));
+
+        Assert.Equal("Query 2", doc.Title);
+    }
+
+    [Fact]
+    public void ChangingTypeMovesTheScriptToTheOtherTypeFolder()
+    {
+        var ws = Create();
+        var doc = ws.NewDocument(null, new CatalogTag(ws.Config.FindServer("s1"), "Sales", null, null));
+        doc.Text = "SELECT 7";
+        ws.Save(doc);
+
+        ws.SetType(doc, "analytics");
+
+        Assert.Equal(Path.Combine(Root, "s1", "Sales", "analytics", "Query 1.sql"), doc.FilePath);
+        Assert.Equal("SELECT 7", File.ReadAllText(doc.FilePath!));
+        Assert.False(File.Exists(Path.Combine(Root, "s1", "Sales", "scripts", "Query 1.sql")));
+    }
+
+    [Fact]
+    public void SelectServerKeepsTheDatabaseOnlyWhenTheServerHasItAndMovesTheFile()
+    {
+        var ws = Create();
+        var doc = ws.NewDocument(null, new CatalogTag(ws.Config.FindServer("s1"), "Sales", null, null));
+        ws.Save(doc);
 
         ws.SelectServer(doc, ws.Config.FindServer("s2")!);
-        Assert.Equal("Other", doc.Database);
-        Assert.Equal("s2", doc.Server);
+
+        Assert.Equal(("s2", "Other"), (doc.Server, doc.Database));
+        Assert.Equal(Path.Combine(Root, "s2", "Other", "scripts", "Query 1.sql"), doc.FilePath);
     }
 
     [Fact]
-    public void FlushAllMakesWindowsSurviveARestart()
+    public void FlushAllMakesScriptsSurviveARestartWithTheirServerDatabaseAndType()
     {
         var ws = Create();
-        var doc = ws.NewDocument(null);
+        var doc = ws.NewDocument(null, new CatalogTag(ws.Config.FindServer("s1"), "Sales", "cleanup", null));
         doc.Text = "SELECT 42";
-        doc.Server = "s1";
         ws.FlushAll();
 
         var restarted = Create();
 
         Assert.Equal(1, restarted.RestoredCount);
-        Assert.Equal("SELECT 42", restarted.Documents[0].Text);
-        Assert.Equal("s1", restarted.Documents[0].Server);
+        var restored = restarted.Documents[0];
+        Assert.Equal("SELECT 42", restored.Text);
+        Assert.Equal(("s1", "Sales", "cleanup"), (restored.Server, restored.Database, restored.Type));
     }
 
     [Fact]
-    public void ClosingAWindowMovesItsFileAndForgetsIt()
+    public void ClosingKeepsAScriptWithContentAndRemovesAnEmptyOne()
+    {
+        var ws = Create();
+        var full = ws.NewDocument(null);
+        full.Text = "SELECT 1";
+        var empty = ws.NewDocument(null);
+        ws.Save(full);
+        ws.Save(empty);
+
+        ws.Close(full);
+        ws.Close(empty);
+
+        Assert.Empty(ws.Documents);
+        Assert.True(File.Exists(full.FilePath!));
+        Assert.False(File.Exists(empty.FilePath!));
+    }
+
+    [Fact]
+    public void OpeningAScriptTwiceReturnsTheSameWindow()
+    {
+        var ws = Create();
+        var doc = ws.NewDocument(null, new CatalogTag(ws.Config.FindServer("s1"), "Sales", null, null));
+        doc.Text = "SELECT 1";
+        ws.Save(doc);
+        var tag = new CatalogTag(ws.Config.FindServer("s1"), "Sales", "scripts", doc.FilePath);
+
+        Assert.Same(doc, ws.OpenScript(tag));
+        ws.Close(doc);
+        var reopened = ws.OpenScript(tag);
+
+        Assert.NotSame(doc, reopened);
+        Assert.Equal("SELECT 1", reopened!.Text);
+    }
+
+    [Fact]
+    public void CatalogListsConfiguredTypesEvenWhenEmptyAndExtraFoldersFromDisk()
+    {
+        var ws = Create();
+        var doc = ws.NewDocument(null, new CatalogTag(ws.Config.FindServer("s1"), "Sales", null, null));
+        doc.Text = "x";
+        ws.Save(doc);
+        Directory.CreateDirectory(Path.Combine(Root, "s1", "Sales", "old-stuff"));
+
+        var catalog = ws.BuildCatalog();
+
+        var sales = catalog.Groups[0].Servers[0].Databases.Single(d => d.Database == "Sales");
+        Assert.Equal(new[] { "scripts", "troubleshooting", "cleanup", "analytics", "old-stuff" }, sales.Types.Select(t => t.Type));
+        Assert.Single(sales.Types[0].Scripts);
+        Assert.Empty(catalog.Unassigned);
+    }
+
+    [Fact]
+    public void CatalogShowsUnassignedScriptsOnlyWhenThereAreSome()
     {
         var ws = Create();
         var doc = ws.NewDocument(null);
-        doc.Text = "SELECT 1";
+        doc.Text = "loose";
+        ws.Save(doc);
 
-        ws.Close(doc);
-
-        Assert.Empty(ws.Documents);
-        Assert.True(File.Exists(Path.Combine(_folder, "Closed", doc.Id + ".sql")));
+        Assert.Single(ws.BuildCatalog().Unassigned);
     }
 
     [Fact]

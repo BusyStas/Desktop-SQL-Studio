@@ -11,6 +11,7 @@
                 <Separator />
                 <MenuItem Header="Open _Autosave Folder" Click="OpenAutosaveFolder_Click" />
                 <MenuItem Header="_Edit Config (config.json)" Click="EditConfig_Click" />
+                <MenuItem Header="Edit Script _Types (script-types.yaml)" Click="EditTypes_Click" />
                 <MenuItem Header="_Reload Config" Click="ReloadConfig_Click" />
                 <Separator />
                 <MenuItem Header="E_xit" Click="Exit_Click" />
@@ -23,9 +24,12 @@
 
         <ToolBar DockPanel.Dock="Top">
             <TextBlock Text="Server:" VerticalAlignment="Center" Margin="4,0" />
-            <TextBlock x:Name="ServerLabel" FontWeight="Bold" VerticalAlignment="Center" MinWidth="120" Text="(none)" />
+            <ComboBox x:Name="ServerCombo" Width="170" DisplayMemberPath="Name" SelectionChanged="ServerCombo_SelectionChanged" />
             <TextBlock Text="Database:" VerticalAlignment="Center" Margin="12,0,4,0" />
-            <ComboBox x:Name="DatabaseCombo" Width="200" SelectionChanged="DatabaseCombo_SelectionChanged" />
+            <ComboBox x:Name="DatabaseCombo" Width="170" SelectionChanged="DatabaseCombo_SelectionChanged" />
+            <Separator />
+            <TextBlock Text="Type:" VerticalAlignment="Center" Margin="4,0" />
+            <StackPanel x:Name="TypePanel" Orientation="Horizontal" />
             <Separator />
             <Button x:Name="ExecuteButton" Content="▶ Execute (F5)" Click="Execute_Click" />
             <Button x:Name="CancelButton" Content="■ Cancel" Click="Cancel_Click" IsEnabled="False" />
