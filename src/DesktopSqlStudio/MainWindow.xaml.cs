@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,69 +8,52 @@ using DesktopSqlStudio.Core;
 
 namespace DesktopSqlStudio;
 
+/// <summary>WPF front end. All logic lives in <see cref="QueryWorkspace"/>; this class only draws it.</summary>
 public partial class MainWindow : Window
 {
-    private AppConfig _config;
-    private readonly string _configPath;
-    private readonly QueryStore _store;
+    private readonly QueryWorkspace _ws;
     private bool _syncing;
     private readonly Dictionary<string, TreeViewItem> _serverItems = new(StringComparer.OrdinalIgnoreCase);
 
-    public MainWindow(AppConfig config, string configPath, QueryStore store)
+    public MainWindow(QueryWorkspace workspace)
     {
         InitializeComponent();
-        _config = config;
-        _configPath = configPath;
-        _store = store;
+        _ws = workspace;
 
         BuildTree();
-
-        var restored = _store.LoadOpen();
-        foreach (var q in restored) AddTab(q);
+        foreach (var document in _ws.Documents.ToList()) AddTab(document);
         if (Tabs.Items.Count == 0) NewQuery();
         Tabs.SelectedIndex = 0;
 
-        StatusText.Text = ConfigWarnings() ?? (restored.Count > 0
-            ? $"Restored {restored.Count} query window(s) from {_store.Folder}"
-            : $"Autosaving to {_store.Folder}");
+        StatusText.Text = _ws.ConfigWarnings() ?? (_ws.RestoredCount > 0
+            ? $"Restored {_ws.RestoredCount} query window(s) from {_ws.Store.Folder}"
+            : $"Autosaving to {_ws.Store.Folder}");
     }
 
     private QueryView? Current => (Tabs.SelectedItem as TabItem)?.Content as QueryView;
+
+    private IEnumerable<QueryView> Views => Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<QueryView>();
 
     // ---------- tabs ----------
 
     private void NewQuery()
     {
-        var number = Tabs.Items.OfType<TabItem>()
-            .Select(t => (t.Content as QueryView)?.Title ?? "")
-            .Select(title => Regex.Match(title, @"^Query (\d+)$"))
-            .Where(m => m.Success)
-            .Select(m => int.Parse(m.Groups[1].Value))
-            .DefaultIfEmpty(0).Max() + 1;
-
-        var saved = new SavedQuery
-        {
-            Id = QueryStore.NewId(),
-            Title = $"Query {number}",
-            Server = Current?.ServerName,
-            Database = Current?.Database
-        };
-        var view = AddTab(saved);
-        SafeSave(() => _store.SaveText(view.Id, view.Text)); // the file exists from the first moment
+        var document = _ws.NewDocument(Current?.Document);
+        var view = AddTab(document);
+        SafeSave(() => { _ws.Save(document); _ws.SaveSession(); }); // the file exists from the first moment
         Tabs.SelectedItem = Tabs.Items.OfType<TabItem>().Last();
-        SaveSession();
         view.FocusEditor();
     }
 
-    private QueryView AddTab(SavedQuery saved)
+    private QueryView AddTab(QueryDocument document)
     {
-        var view = new QueryView(saved);
-        view.Changed += (_, _) => SafeSave(() => _store.SaveText(view.Id, view.Text));
+        var view = new QueryView(document);
+        view.Changed += (_, _) => SafeSave(() => _ws.Save(document));
         view.RunningChanged += (_, _) => UpdateButtons();
 
         var closeButton = new Button { Content = "×", Padding = new Thickness(4, 0, 4, 0), Margin = new Thickness(8, 0, 0, 0), BorderThickness = new Thickness(0), Background = System.Windows.Media.Brushes.Transparent };
         var header = new StackPanel { Orientation = Orientation.Horizontal };
-        header.Children.Add(new TextBlock { Text = view.Title, VerticalAlignment = VerticalAlignment.Center });
+        header.Children.Add(new TextBlock { Text = document.Title, VerticalAlignment = VerticalAlignment.Center });
         header.Children.Add(closeButton);
 
         var tab = new TabItem { Header = header, Content = view };
@@ -84,8 +66,8 @@ public partial class MainWindow : Window
     {
         if (tab.Content is not QueryView view) return;
         view.Cancel();
-        // Save the final text, then move the file to Closed/ (never deleted).
-        SafeSave(() => { _store.SaveText(view.Id, view.Text); _store.MarkClosed(view.Id); });
+        view.SyncText();
+        SafeSave(() => _ws.Close(view.Document));
         Tabs.Items.Remove(tab);
         if (Tabs.Items.Count == 0) NewQuery();
         SaveSession();
@@ -93,17 +75,13 @@ public partial class MainWindow : Window
 
     // ---------- autosave ----------
 
-    private void SaveSession() => SafeSave(() => _store.SaveSession(OpenQueries()));
-
-    private IEnumerable<SavedQuery> OpenQueries() =>
-        Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<QueryView>()
-            .Select(v => new SavedQuery { Id = v.Id, Title = v.Title, Server = v.ServerName, Database = v.Database, Text = v.Text });
+    private void SaveSession() => SafeSave(_ws.SaveSession);
 
     /// <summary>Writes every open query and the session list to disk right now.</summary>
     public void FlushAll()
     {
-        foreach (var q in OpenQueries()) _store.SaveText(q.Id, q.Text);
-        _store.SaveSession(OpenQueries());
+        foreach (var view in Views) view.SyncText();
+        _ws.FlushAll();
     }
 
     private void SafeSave(Action save)
@@ -117,18 +95,12 @@ public partial class MainWindow : Window
 
     // ---------- servers and databases ----------
 
-    private string? ConfigWarnings()
-    {
-        var problems = _config.Validate();
-        return problems.Count == 0 ? null : $"Config ({_configPath}): " + string.Join(" ", problems);
-    }
-
     private void BuildTree()
     {
         _syncing = true;
         ServerTree.Items.Clear();
         _serverItems.Clear();
-        foreach (var group in _config.ServerGroups)
+        foreach (var group in _ws.Config.ServerGroups)
         {
             var groupItem = new TreeViewItem { Header = group.Name, IsExpanded = true, FontWeight = FontWeights.SemiBold };
             foreach (var server in group.Servers)
@@ -149,15 +121,15 @@ public partial class MainWindow : Window
     private void SyncPickers()
     {
         _syncing = true;
-        var view = Current;
-        var server = _config.FindServer(view?.ServerName);
+        var document = Current?.Document;
+        var server = _ws.ServerOf(document);
 
         if (ServerTree.SelectedItem is TreeViewItem selected) selected.IsSelected = false;
         if (server is not null && _serverItems.TryGetValue(server.Name, out var item)) item.IsSelected = true;
 
         ServerLabel.Text = server?.Name ?? "(none)";
         DatabaseCombo.ItemsSource = server?.Databases;
-        DatabaseCombo.SelectedItem = server?.Databases.FirstOrDefault(d => d.Equals(view?.Database, StringComparison.OrdinalIgnoreCase));
+        DatabaseCombo.SelectedItem = server?.Databases.FirstOrDefault(d => d.Equals(document?.Database, StringComparison.OrdinalIgnoreCase));
         _syncing = false;
         UpdateButtons();
     }
@@ -174,9 +146,7 @@ public partial class MainWindow : Window
         if (_syncing || Current is null) return;
         if (e.NewValue is not TreeViewItem { Tag: ServerEntry server }) return; // a group row: ignore
 
-        Current.ServerName = server.Name;
-        if (!server.Databases.Contains(Current.Database ?? "", StringComparer.OrdinalIgnoreCase))
-            Current.Database = server.DefaultDatabase;
+        _ws.SelectServer(Current.Document, server);
         SyncPickers();
         SaveSession();
     }
@@ -184,7 +154,7 @@ public partial class MainWindow : Window
     private void DatabaseCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_syncing || Current is null || DatabaseCombo.SelectedItem is not string database) return;
-        Current.Database = database;
+        Current.Document.Database = database;
         SaveSession();
     }
 
@@ -204,18 +174,20 @@ public partial class MainWindow : Window
         var view = Current;
         if (view is null || view.IsRunning) return;
 
-        if (!_config.TryResolve(view.ServerName, view.Database, out var profile, out var error))
+        var document = view.Document;
+        if (!_ws.Config.TryResolve(document.Server, document.Database, out var profile, out var error))
         {
-            StatusText.Text = _config.ServerGroups.Count == 0
+            StatusText.Text = _ws.Config.ServerGroups.Count == 0
                 ? "No servers yet: File > Edit Config, add a credential and a server group, then File > Reload Config."
                 : error;
             return;
         }
 
         // Make sure what we are about to run is already safely on disk.
-        SafeSave(() => _store.SaveText(view.Id, view.Text));
+        view.SyncText();
+        SafeSave(() => _ws.Save(document));
         StatusText.Text = $"Running on {profile.Name} / {profile.Database}...";
-        await view.RunAsync(profile);
+        await view.RunAsync(_ws);
         StatusText.Text = $"Finished on {profile.Name} / {profile.Database}";
     }
 
@@ -225,19 +197,19 @@ public partial class MainWindow : Window
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     private void OpenAutosaveFolder_Click(object sender, RoutedEventArgs e) =>
-        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_store.Folder}\"") { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{_ws.Store.Folder}\"") { UseShellExecute = true });
 
     private void EditConfig_Click(object sender, RoutedEventArgs e) =>
-        Process.Start(new ProcessStartInfo("notepad.exe", $"\"{_configPath}\"") { UseShellExecute = true });
+        Process.Start(new ProcessStartInfo("notepad.exe", $"\"{_ws.ConfigPath}\"") { UseShellExecute = true });
 
     private void ReloadConfig_Click(object sender, RoutedEventArgs e)
     {
         try
         {
-            _config = AppConfig.Load(_configPath);
+            _ws.ReloadConfig();
             BuildTree();
-            StatusText.Text = ConfigWarnings() ??
-                $"Config reloaded: {_config.AllServers().Count()} server(s) in {_config.ServerGroups.Count} group(s). Autosave folder changes need a restart.";
+            StatusText.Text = _ws.ConfigWarnings() ??
+                $"Config reloaded: {_ws.Config.AllServers().Count()} server(s) in {_ws.Config.ServerGroups.Count} group(s). Autosave folder changes need a restart.";
         }
         catch (Exception ex)
         {
@@ -255,7 +227,7 @@ public partial class MainWindow : Window
 
     private void Window_Closing(object? sender, CancelEventArgs e)
     {
-        foreach (var view in Tabs.Items.OfType<TabItem>().Select(t => t.Content).OfType<QueryView>()) view.Cancel();
+        foreach (var view in Views) view.Cancel();
         try { FlushAll(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

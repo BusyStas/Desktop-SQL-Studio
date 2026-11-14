@@ -14,10 +14,7 @@ public sealed partial class QueryView : UserControl
     private readonly DispatcherTimer _debounce = new() { Interval = TimeSpan.FromMilliseconds(500) };
     private CancellationTokenSource? _cts;
 
-    public string Id { get; }
-    public string Title { get; set; }
-    public string? ServerName { get; set; }
-    public string? Database { get; set; }
+    public QueryDocument Document { get; }
     public bool IsRunning { get; private set; }
     public string Text => Editor.Text;
 
@@ -25,20 +22,18 @@ public sealed partial class QueryView : UserControl
     public event EventHandler? Changed;
     public event EventHandler? RunningChanged;
 
-    public QueryView(SavedQuery saved)
+    public QueryView(QueryDocument document)
     {
         InitializeComponent();
-        Id = saved.Id;
-        Title = saved.Title;
-        ServerName = saved.Server;
-        Database = saved.Database;
+        Document = document;
 
         Editor.SyntaxHighlighting = HighlightingManager.Instance.GetDefinitionByExtension(".sql");
-        Editor.Text = saved.Text;
+        Editor.Text = document.Text;
 
         _debounce.Tick += (_, _) =>
         {
             _debounce.Stop();
+            SyncText();
             Changed?.Invoke(this, EventArgs.Empty);
         };
         Editor.TextChanged += (_, _) =>
@@ -48,12 +43,15 @@ public sealed partial class QueryView : UserControl
         };
     }
 
+    /// <summary>Copies the editor text into the document so the workspace can save it.</summary>
+    public void SyncText() => Document.Text = Editor.Text;
+
     public void FocusEditor() => Editor.Focus();
 
     public void Cancel() => _cts?.Cancel();
 
     /// <summary>Runs the selected text, or the whole script when nothing is selected.</summary>
-    public async Task RunAsync(ConnectionProfile profile)
+    public async Task RunAsync(QueryWorkspace workspace)
     {
         if (IsRunning) return;
         var sql = Editor.SelectionLength > 0 ? Editor.SelectedText : Editor.Text;
@@ -66,12 +64,7 @@ public sealed partial class QueryView : UserControl
         QueryResult result;
         try
         {
-            result = await QueryExecutor.ExecuteAsync(profile, sql, _cts.Token);
-        }
-        catch (Exception ex)
-        {
-            result = new QueryResult { Failed = true };
-            result.Messages.Add(ex.Message);
+            result = await workspace.RunAsync(Document, sql, _cts.Token);
         }
         finally
         {
