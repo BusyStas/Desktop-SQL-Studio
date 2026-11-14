@@ -12,3 +12,4 @@ if errorlevel 1 (
 )
 start "" "src\DesktopSqlStudio\bin\Release\net10.0-windows\DesktopSqlStudio.exe"
 endlocal
+pause
